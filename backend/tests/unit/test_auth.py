@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
@@ -34,7 +33,9 @@ def test_get_me_returns_user_when_valid_token():
     mock_admin.auth.get_user.return_value = result
 
     client = _app_client()
-    with patch("app.api.middleware.auth.get_supabase_admin", return_value=mock_admin):
+    # Patch both the auth check and the family_id lookup
+    with patch("app.api.middleware.auth.get_supabase_admin", return_value=mock_admin), \
+         patch("app.api.middleware.auth.get_family_id_for_user", return_value=None):
         response = client.get("/api/auth/me", headers={"Authorization": "Bearer valid-token"})
 
     assert response.status_code == 200
@@ -46,7 +47,6 @@ def test_get_me_returns_user_when_valid_token():
 def test_missing_authorization_header_returns_403():
     client = _app_client()
     response = client.get("/api/auth/me")
-    # HTTPBearer returns 403 when the header is entirely absent
     assert response.status_code == 403
 
 
@@ -74,15 +74,18 @@ def test_null_user_in_result_returns_401():
     assert response.status_code == 401
 
 
-def test_family_id_not_in_response_until_phase_2():
-    """family_id is resolved in Phase 2 — not present in /me response yet."""
+def test_family_id_present_in_me_response():
+    """family_id is now included in /me — null when not yet onboarded."""
     result = _make_supabase_result()
     mock_admin = MagicMock()
     mock_admin.auth.get_user.return_value = result
 
     client = _app_client()
-    with patch("app.api.middleware.auth.get_supabase_admin", return_value=mock_admin):
+    with patch("app.api.middleware.auth.get_supabase_admin", return_value=mock_admin), \
+         patch("app.api.middleware.auth.get_family_id_for_user", return_value=None):
         response = client.get("/api/auth/me", headers={"Authorization": "Bearer valid-token"})
 
     assert response.status_code == 200
-    assert "family_id" not in response.json()
+    data = response.json()
+    assert "family_id" in data
+    assert data["family_id"] is None  # null until onboarding complete
