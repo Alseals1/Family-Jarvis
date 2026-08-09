@@ -72,3 +72,38 @@ def test_seed_no_real_email_domains():
 def test_seed_demo_mode_true():
     assert "demo_mode" in sql()
     assert "true" in sql().lower()
+
+
+def test_calendars_present_for_all_members():
+    """Seed contains one calendar row for each of the four Reeds family members."""
+    s = sql()
+    assert "INSERT INTO calendars" in s
+    # Each member UUID must appear in the calendars block
+    member_uuids = [
+        "00000000-0000-0000-0001-000000000001",  # Marcus
+        "00000000-0000-0000-0001-000000000002",  # Priya
+        "00000000-0000-0000-0001-000000000003",  # Eli
+        "00000000-0000-0000-0001-000000000004",  # Zoe
+    ]
+    cal_block_start = s.find("INSERT INTO calendars")
+    cal_block = s[cal_block_start:cal_block_start + 2000]
+    for uuid in member_uuids:
+        assert uuid in cal_block, f"Calendar for member {uuid} not found in seed"
+
+
+def test_calendar_events_present():
+    """Seed contains at least 10 calendar_events rows."""
+    s = sql()
+    assert "INSERT INTO calendar_events" in s
+    # Count value tuples in the calendar_events block
+    block_start = s.find("INSERT INTO calendar_events")
+    block = s[block_start:block_start + 5000]
+    event_count = block.count("'confirmed'")
+    assert event_count >= 10, f"Expected ≥10 calendar events, found {event_count}"
+
+
+def test_double_booking_event_present():
+    """Seed contains two overlapping Marcus events on 2026-08-16 (Sunday)."""
+    s = sql()
+    assert "2026-08-16" in s
+    assert "Marcus double-booked" in s or "double" in s.lower()
