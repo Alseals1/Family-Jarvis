@@ -25,17 +25,36 @@
 
 ---
 
-## Decisions Needed From User
+## Decisions Made (2026-08-09 — User Approval Session)
 
-| ID | Question | Impact | Urgency |
-|---|---|---|---|
-| Q-001 | Approve architecture as documented? | Blocks all implementation | IMMEDIATE |
-| Q-002 | Confirm tech stack (Python/FastAPI + React/TypeScript + Supabase + Render)? | Blocks Phase 1 | IMMEDIATE |
-| Q-003 | Provide screenshot for UI visual language? | Blocks Phase 8 (UI design) | Before Phase 8 |
-| Q-004 | Which OpenRouter models to start with? (defaults provided in `.env.example`) | Affects cost and quality | Before Phase 4 |
-| Q-005 | Google Calendar OAuth app — do you already have a Google Cloud project? | Needed for integration | Before Phase 3 |
-| Q-006 | ElevenLabs account and voice preference? | Needed for voice | Before Phase 7 |
-| Q-007 | Custom domain for production? | Needed for deployment | Before Phase 9 |
+| ID | Decision | Notes |
+|---|---|---|
+| Q-001 | Architecture APPROVED | Phase 1 may begin |
+| Q-002 | Tech stack CONFIRMED | Python/FastAPI + React/TypeScript + Supabase + Render |
+| Q-003 | UI visual language APPROVED | Dark near-black, cyan-teal HUD rings, sci-fi. See screenshot: `javisDemo/Screenshot 2026-08-09 at 2.08.19 PM.png` |
+| Q-004 | OpenRouter model: `google/gemma-4-31b-it:free` | All agents use this model (free tier) |
+| Q-005 | Google Cloud project: needs to be created | Blocker for Phase 3 — not needed for Phase 1 |
+| Q-006 | ElevenLabs API key confirmed in .env; German voice requested | `ELEVENLABS_VOICE_ID` still needs German voice ID from ElevenLabs dashboard |
+| Q-007 | Production: Render subdomain (no custom domain) | Cheapest/easiest route |
+
+## Workflow Rules Added
+
+- Plan file required in `/plans/` before each phase
+- One branch per task, always pushed
+- Tests must pass before merge — never modify tests, only code
+- All merges go to `dev` only; `main` = production
+- Branch only off `dev`
+- Do not merge to `dev` without user approval
+- Use `pr-recap` skill before every commit/PR
+
+## Open Items
+
+| ID | Item | Urgency |
+|---|---|---|
+| OI-001 | Set `ELEVENLABS_VOICE_ID` in .env with German voice ID from ElevenLabs dashboard | Before Phase 7 |
+| OI-002 | Create Google Cloud project + OAuth credentials | Before Phase 3 |
+| OI-003 | Generate `CALENDAR_ENCRYPTION_KEY` (32-byte hex) | Before Phase 3 |
+| OI-004 | Generate `JWT_SECRET` (secure random string) | Before Phase 1 runs |
 
 ---
 

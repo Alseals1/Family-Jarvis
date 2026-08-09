@@ -50,6 +50,25 @@ Full architecture: `docs/architecture/architecture.md`
 9. **Never test against real family data — use demo mode first.**
 10. **Every phase must have passing tests before the next phase begins.**
 
+## Workflow Rules (MANDATORY)
+
+11. **Plan before coding.** Before starting any phase, write a plan file in `/plans/phase-N-name.md` and get it reviewed before writing code.
+12. **One task = one branch.** Every task gets its own feature branch.
+13. **Push every branch** (unless it's a local-only test scratch). All work lives on remote.
+14. **Never merge before tests pass.** No exceptions.
+15. **Never modify a test to make code pass.** Only the code changes; tests are the contract.
+16. **Merge to `dev` only.** All feature branches merge into `dev`, never directly to `main`.
+17. **Only branch off `dev`.** Never branch off `main` or a feature branch.
+18. **`dev` is the default GitHub branch.** `main` is production-only.
+19. **Do not merge to `dev` without user approval.** Propose the merge; wait for go-ahead.
+20. **Use `/pr-recap` skill before every commit/PR.** Run it to generate the recap before pushing.
+
+## UI Visual Language (APPROVED)
+
+Screenshot source: `javisDemo/Screenshot 2026-08-09 at 2.08.19 PM.png`
+Extracted: Dark near-black background, glowing cyan-teal concentric HUD rings, fine grid lines, high-contrast sci-fi typography — Iron Man JARVIS aesthetic.
+**Do not copy the screenshot literally. Apply its visual language to a family assistant interface.**
+
 ---
 
 ## Specialist Agents

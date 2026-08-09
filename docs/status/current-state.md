@@ -66,9 +66,20 @@ README.md                       ✅
 
 ---
 
+## Decisions Confirmed (2026-08-09)
+
+- [x] Architecture approved
+- [x] Tech stack confirmed
+- [x] UI visual language: dark near-black + cyan-teal HUD (Iron Man JARVIS aesthetic)
+- [x] LLM model: `google/gemma-4-31b-it:free` (all agents)
+- [x] Voice: ElevenLabs (German voice — voice ID TBD from dashboard)
+- [x] Hosting: Render subdomain
+- [x] Workflow rules added to CLAUDE.md
+
 ## Current Phase Gate
 
-**Phase 0 → Phase 1 requires:**
-- [ ] User approves architecture
-- [ ] User approves Phase 1 plan
-- [ ] User confirms tech stack (Python/FastAPI + React/TypeScript + Supabase + OpenRouter + ElevenLabs + Render)
+**Phase 0 → Phase 1: APPROVED — Planning Phase 1 now.**
+
+Remaining open items before Phase 1 *runs* (not before planning):
+- [ ] `JWT_SECRET` generated in .env
+- [ ] Git repo initialized on GitHub with `dev` as default branch
