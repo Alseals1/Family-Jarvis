@@ -144,3 +144,104 @@ INSERT INTO trips (family_id, name, destination, departure_date, return_date,
      '00000000-0000-0000-0001-000000000004'::uuid
    ],
    'planned');
+
+-- ── Calendars (Phase 3) ─────────────────────────────────────────────────────
+-- One calendar per family member. Adults use Google; children use manual.
+-- Tokens are empty strings in seed (no real OAuth in demo mode).
+INSERT INTO calendars
+  (id, family_id, family_member_id, provider, external_id, name, sync_enabled)
+VALUES
+  ('00000000-0000-0000-0002-000000000001',
+   '00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0001-000000000001',
+   'google', 'primary', 'Marcus Reed', true),
+  ('00000000-0000-0000-0002-000000000002',
+   '00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0001-000000000002',
+   'google', 'primary', 'Priya Reed', true),
+  ('00000000-0000-0000-0002-000000000003',
+   '00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0001-000000000003',
+   'manual', NULL, 'Eli Reed', true),
+  ('00000000-0000-0000-0002-000000000004',
+   '00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0001-000000000004',
+   'manual', NULL, 'Zoe Reed', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- ── Calendar Events (Phase 3 — week of 2026-08-09) ──────────────────────────
+-- All times UTC. status='confirmed', source='manual' (no live sync in seed).
+-- Friday is intentionally empty — free evening verified by absence.
+-- Saturday: cross-member same-time scenario (different people, not a conflict).
+-- Sunday: Marcus double-booked — same-person overlap (conflict scenario).
+INSERT INTO calendar_events
+  (family_id, calendar_id, family_member_id, external_id, title,
+   start_time, end_time, all_day, status, source)
+VALUES
+  -- Monday Aug 10
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000001',
+   '00000000-0000-0000-0001-000000000001',
+   'seed-evt-mon-marcus', 'Work standup',
+   '2026-08-10T09:00:00Z', '2026-08-10T09:30:00Z', false, 'confirmed', 'manual'),
+
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000002',
+   '00000000-0000-0000-0001-000000000002',
+   'seed-evt-mon-priya', 'Client call',
+   '2026-08-10T14:00:00Z', '2026-08-10T15:00:00Z', false, 'confirmed', 'manual'),
+
+  -- Tuesday Aug 11
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000003',
+   '00000000-0000-0000-0001-000000000003',
+   'seed-evt-tue-eli', 'Soccer practice',
+   '2026-08-11T16:00:00Z', '2026-08-11T17:30:00Z', false, 'confirmed', 'manual'),
+
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000004',
+   '00000000-0000-0000-0001-000000000004',
+   'seed-evt-tue-zoe', 'Dance class',
+   '2026-08-11T16:00:00Z', '2026-08-11T17:00:00Z', false, 'confirmed', 'manual'),
+
+  -- Wednesday Aug 12
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000001',
+   '00000000-0000-0000-0001-000000000001',
+   'seed-evt-wed-marcus', 'Doctor appointment',
+   '2026-08-12T10:00:00Z', '2026-08-12T11:00:00Z', false, 'confirmed', 'manual'),
+
+  -- Thursday Aug 13
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000002',
+   '00000000-0000-0000-0001-000000000002',
+   'seed-evt-thu-priya', 'Work presentation',
+   '2026-08-13T13:00:00Z', '2026-08-13T14:00:00Z', false, 'confirmed', 'manual'),
+
+  -- Saturday Aug 15 — cross-member same time (scheduling awareness, not a conflict)
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000001',
+   '00000000-0000-0000-0001-000000000001',
+   'seed-evt-sat-marcus', 'Soccer',
+   '2026-08-15T10:00:00Z', '2026-08-15T11:00:00Z', false, 'confirmed', 'manual'),
+
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000002',
+   '00000000-0000-0000-0001-000000000002',
+   'seed-evt-sat-priya', 'Dentist',
+   '2026-08-15T10:00:00Z', '2026-08-15T11:30:00Z', false, 'confirmed', 'manual'),
+
+  -- Sunday Aug 16 — Marcus double-booked (same-person conflict scenario)
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000001',
+   '00000000-0000-0000-0001-000000000001',
+   'seed-evt-sun-marcus-a', 'Marcus double-booked A',
+   '2026-08-16T14:00:00Z', '2026-08-16T15:00:00Z', false, 'confirmed', 'manual'),
+
+  ('00000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0002-000000000001',
+   '00000000-0000-0000-0001-000000000001',
+   'seed-evt-sun-marcus-b', 'Marcus double-booked B',
+   '2026-08-16T14:30:00Z', '2026-08-16T15:30:00Z', false, 'confirmed', 'manual')
+
+ON CONFLICT DO NOTHING;
