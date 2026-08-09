@@ -1,0 +1,10 @@
+{
+  "name": "Family JARVIS",
+  "short_name": "JARVIS",
+  "description": "AI-powered family chief of staff",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e1a",
+  "theme_color": "#00e5ff",
+  "icons": []
+}
