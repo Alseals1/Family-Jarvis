@@ -8,6 +8,7 @@ from app.api.routes.llm import router as llm_router
 from app.api.routes.family_members import router as family_members_router
 from app.api.routes.important_dates import router as important_dates_router
 from app.api.routes.preferences import router as preferences_router
+from app.api.routes.calendar import router as calendar_router
 
 settings = get_settings()
 
@@ -32,3 +33,4 @@ app.include_router(llm_router)
 app.include_router(family_members_router)
 app.include_router(important_dates_router)
 app.include_router(preferences_router)
+app.include_router(calendar_router)
