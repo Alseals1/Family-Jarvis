@@ -5,6 +5,7 @@ from app.config import get_settings
 from app.api.routes.health import router as health_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.llm import router as llm_router
+from app.api.routes.family_members import router as family_members_router
 
 settings = get_settings()
 
@@ -26,3 +27,4 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(llm_router)
+app.include_router(family_members_router)
