@@ -12,4 +12,5 @@ async def health_check():
         "version": "0.1.0",
         "env": settings.app_env,
         "demo_mode": settings.is_demo,
+        "db": "configured" if settings.supabase_url else "missing",
     }
