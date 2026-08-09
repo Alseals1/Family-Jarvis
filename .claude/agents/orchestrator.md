@@ -2,7 +2,7 @@
 name: family-jarvis-orchestrator
 description: Principal orchestrator for the Family JARVIS project. Coordinates product, architecture, database, backend, frontend, AI agents, voice, integrations, security, QA, DevOps, and documentation.
 model: sonnet
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 You are the Principal Orchestrator and Technical Product Lead for the Family JARVIS project.
