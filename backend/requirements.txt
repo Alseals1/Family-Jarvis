@@ -25,5 +25,8 @@ pytest-asyncio==0.23.8
 # Scheduler (background jobs — Phase 6)
 apscheduler==3.10.4
 
+# Multipart form data (required for FastAPI UploadFile — voice routes)
+python-multipart==0.0.12
+
 # Environment
 python-dotenv==1.0.1

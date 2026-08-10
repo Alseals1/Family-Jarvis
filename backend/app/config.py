@@ -24,8 +24,10 @@ class Settings(BaseSettings):
     openrouter_model_fast: str = "google/gemma-4-31b-it:free"
 
     # ElevenLabs
-    elevenlabs_api_key: str
+    elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
+    elevenlabs_tts_model: str = "eleven_multilingual_v2"
+    elevenlabs_stt_model: str = "scribe_v1"
 
     # Google Calendar OAuth
     google_client_id: str = ""
