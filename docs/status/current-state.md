@@ -1,8 +1,8 @@
 # Family JARVIS — Current State
 
-**Updated:** 2026-08-09
-**Phase:** 5 — Specialist Agents
-**Status:** COMPLETE — 342/342 tests passing
+**Updated:** 2026-08-10
+**Phase:** 6 — Proactive Intelligence
+**Status:** COMPLETE — 447/447 tests passing
 
 ---
 
@@ -75,12 +75,52 @@
 - [x] Workflow rules added to CLAUDE.md
 - [x] Phase 5 specialist agents complete
 
+## Phase 6 Completion Summary
+
+### Tasks completed
+
+| Task | Branch | Tests | Status |
+|---|---|---|---|
+| T1: Notification Helpers | feat/notification-helpers | 12 | Merged |
+| T2: Important Dates Job | feat/job-important-dates | 14 | Merged |
+| T3: Conflict Alerts Job | feat/job-conflict-alerts | 10 | Merged |
+| T4: Briefing Jobs | feat/job-briefings | 14 | Merged |
+| T5: Free Evening Job | feat/job-free-evening | 13 | Merged |
+| T6: Scheduler Wiring | feat/scheduler-wiring | 10 | Merged |
+| T7: Proactive API Routes | feat/proactive-api-routes | 18 | Merged |
+| T8: Eval Suite | feat/phase6-eval-suite | 14 | Merged |
+
+### Total tests: 447/447 passing (plan estimated 437, actual 447)
+
+### New files
+
+| File | Task |
+|---|---|
+| `backend/app/jobs/notifications.py` | T1 |
+| `backend/app/jobs/important_dates.py` | T2 |
+| `backend/app/jobs/conflict_alerts.py` | T3 |
+| `backend/app/jobs/morning_briefing.py` | T4 |
+| `backend/app/jobs/evening_briefing.py` | T4 |
+| `backend/app/jobs/free_evening.py` | T5 |
+| `backend/app/jobs/scheduler.py` | T6 |
+| `backend/app/api/routes/briefing.py` | T7 |
+| `backend/app/api/routes/notifications.py` | T7 |
+| `backend/tests/unit/test_job_notifications.py` | T1 |
+| `backend/tests/unit/test_job_important_dates.py` | T2 |
+| `backend/tests/unit/test_job_conflict_alerts.py` | T3 |
+| `backend/tests/unit/test_job_briefings.py` | T4 |
+| `backend/tests/unit/test_job_free_evening.py` | T5 |
+| `backend/tests/unit/test_scheduler.py` | T6 |
+| `backend/tests/unit/test_proactive_routes.py` | T7 |
+| `backend/tests/unit/test_phase6_evaluation.py` | T8 |
+
 ## Active Blockers
 
 None.
 
 ## Next Phase
 
-Phase 6 — Proactive Intelligence: background scheduler, daily/weekly briefings,
-birthday/anniversary alerts, conflict alerts. Uses Phase 5 Organizer Agent's
-`include_summary=True` path. No new agent classes needed.
+Phase 7 — Voice: ElevenLabs Scribe STT, ElevenLabs TTS, server-side proxy
+routes /api/listen and /api/speak. Mic state management and barge-in
+handling on the frontend. No new agent code needed — voice is a transport
+layer over the existing Manager Agent.
