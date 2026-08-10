@@ -14,6 +14,7 @@ from app.api.routes.calendar import router as calendar_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.briefing import router as briefing_router
 from app.api.routes.notifications import router as notifications_router
+from app.api.routes.voice import router as voice_router
 
 settings = get_settings()
 
@@ -71,3 +72,4 @@ app.include_router(calendar_router)
 app.include_router(chat_router)
 app.include_router(briefing_router)
 app.include_router(notifications_router)
+app.include_router(voice_router)
