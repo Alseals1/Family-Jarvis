@@ -24,9 +24,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
+from app.agents.chef import ChefAgent
 from app.agents.context import ConversationContextManager
 from app.agents.data_fetcher import FamilyDataFetcher
+from app.agents.date_planner import DatePlannerAgent
 from app.agents.manager import ManagerAgent
+from app.agents.organizer import OrganizerAgent
 from app.api.middleware.auth import get_current_user
 from app.config import get_settings
 from app.db.supabase import get_supabase, get_supabase_admin
@@ -102,16 +105,31 @@ async def chat(
     session_id = request.session_id or str(uuid.uuid4())
 
     settings = get_settings()
-    llm = get_llm_provider()
-    db = get_supabase()
-    db_admin = get_supabase_admin()
+    _llm = get_llm_provider()
+    _db = get_supabase()
+    _db_admin = get_supabase_admin()
 
-    data_fetcher = FamilyDataFetcher(db=db, db_admin=db_admin)
+    _data_fetcher = FamilyDataFetcher(db=_db, db_admin=_db_admin)
     manager = ManagerAgent(
-        llm=llm,
-        data_fetcher=data_fetcher,
+        llm=_llm,
+        data_fetcher=_data_fetcher,
         context_manager=_context_manager,
         model=settings.openrouter_model_manager,
+        organizer=OrganizerAgent(
+            data_fetcher=_data_fetcher,
+            llm=_llm,
+            model=settings.openrouter_model_organizer,
+        ),
+        chef=ChefAgent(
+            data_fetcher=_data_fetcher,
+            llm=_llm,
+            model=settings.openrouter_model_chef,
+        ),
+        date_planner=DatePlannerAgent(
+            data_fetcher=_data_fetcher,
+            llm=_llm,
+            model=settings.openrouter_model_planner,
+        ),
     )
 
     result = await manager.respond(
