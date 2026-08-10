@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-09
 **Phase:** 5 — Specialist Agents
-**Status:** IN PROGRESS — Task 1 (feat/specialist-data-fetcher)
+**Status:** COMPLETE — 342/342 tests passing
 
 ---
 
@@ -10,59 +10,57 @@
 
 | Item | Status | Notes |
 |---|---|---|
-| Build specification | ✅ Complete | `plans/build_specification.md` |
-| Orchestrator agent | ✅ Complete | `.claude/agents/orchestrator.md` |
-| All other agent stubs | ⚠️ Empty | Created but need full definitions |
-| Documentation structure | ✅ Created now | `docs/` tree |
-| Application code | ❌ None | Not started |
-| Database schema | ❌ None | Not started |
-| Backend | ❌ None | Not started |
-| Frontend | ❌ None | Not started |
-| Tests | ❌ None | Not started |
-| CI/CD | ❌ None | Not started |
-| Deployment | ❌ None | Not started |
+| Build specification | Complete | `plans/build_specification.md` |
+| Orchestrator agent | Complete | `.claude/agents/orchestrator.md` |
+| Documentation structure | Complete | `docs/` tree |
+| Backend (FastAPI) | Complete | Phases 1-5 |
+| Database schema | Complete | 16 tables, RLS |
+| Authentication | Complete | JWT + Supabase Auth |
+| Calendar integration | Complete | Google Calendar, Phase 4 |
+| Manager Agent | Complete | Full routing, Phase 4-5 |
+| Organizer Agent | Complete | Phase 5 Task 2 |
+| Chef Agent | Complete | Phase 5 Task 3 |
+| Date Planner Agent | Complete | Phase 5 Task 4 |
+| Specialist routing | Complete | Phase 5 Task 5 |
+| DI wiring | Complete | Phase 5 Task 6 |
+| Eval suite | Complete | Phase 5 Task 7 |
+| Frontend | Shell only | Phase 8 not started |
+| Voice | Not started | Phase 7 |
+| CI/CD | Complete | GitHub Actions |
+| Deployment | Not started | Phase 10 |
 
 ---
 
-## What Was Created in This Planning Pass
+## Phase 5 Completion Summary
 
-```
-docs/
-├── product/
-│   ├── product-spec.md         ✅
-│   ├── mvp.md                  ✅
-│   └── roadmap.md              ✅
-├── architecture/
-│   ├── architecture.md         ✅
-│   ├── system-design.md        ✅
-│   ├── agent-architecture.md   ✅
-│   └── decisions/
-│       ├── ADR-001-openrouter.md   ✅
-│       ├── ADR-002-supabase.md     ✅
-│       └── ADR-003-calendar-ro.md  ✅
-├── database/
-│   └── data-model.md           ✅
-├── agents/
-│   └── team-structure.md       ✅
-├── security/
-│   └── security-model.md       ✅
-└── status/
-    ├── current-state.md        ✅ (this file)
-    ├── active-work.md          ✅
-    ├── blockers.md             ✅
-    └── decisions.md            ✅
-CLAUDE.md                       ✅
-.env.example                    ✅
-README.md                       ✅
-```
+### Tasks completed
 
----
+| Task | Branch | Tests | Status |
+|---|---|---|---|
+| T1: Specialist Data Fetcher | feat/specialist-data-fetcher | 15 | Merged |
+| T2: Organizer Agent | feat/organizer-agent | 12 | Merged |
+| T3: Chef Agent | feat/chef-agent | 14 | Merged |
+| T4: Date Planner Agent | feat/date-planner-agent | 14 | Merged |
+| T5: Manager Routing | feat/manager-specialist-routing | 18 | Merged |
+| T6: DI Wiring | feat/specialist-di-wiring | 8 | Merged |
+| T7: Eval Suite | feat/phase5-eval-suite | 14 | Merged |
 
-## Active Blockers
+### Total tests: 342/342 passing (plan estimated 332)
 
-1. **USER APPROVAL REQUIRED** — Architecture and Phase 1 plan must be approved before implementation begins
-2. **UI GATE** — No visual design until user provides screenshot reference
-3. **Agent stub files** — 12 agent files exist but are empty; need full definitions before agents can be invoked
+### New files
+
+| File | Task |
+|---|---|
+| `backend/app/agents/organizer.py` | T2 |
+| `backend/app/agents/chef.py` | T3 |
+| `backend/app/agents/date_planner.py` | T4 |
+| `backend/tests/unit/test_specialist_data_fetcher.py` | T1 |
+| `backend/tests/unit/test_organizer_agent.py` | T2 |
+| `backend/tests/unit/test_chef_agent.py` | T3 |
+| `backend/tests/unit/test_date_planner_agent.py` | T4 |
+| `backend/tests/unit/test_manager_specialist_routing.py` | T5 |
+| `backend/tests/unit/test_specialist_wiring.py` | T6 |
+| `backend/tests/unit/test_phase5_evaluation.py` | T7 |
 
 ---
 
@@ -75,11 +73,14 @@ README.md                       ✅
 - [x] Voice: ElevenLabs (German voice — voice ID TBD from dashboard)
 - [x] Hosting: Render subdomain
 - [x] Workflow rules added to CLAUDE.md
+- [x] Phase 5 specialist agents complete
 
-## Current Phase Gate
+## Active Blockers
 
-**Phase 0 → Phase 1: APPROVED — Planning Phase 1 now.**
+None.
 
-Remaining open items before Phase 1 *runs* (not before planning):
-- [ ] `JWT_SECRET` generated in .env
-- [ ] Git repo initialized on GitHub with `dev` as default branch
+## Next Phase
+
+Phase 6 — Proactive Intelligence: background scheduler, daily/weekly briefings,
+birthday/anniversary alerts, conflict alerts. Uses Phase 5 Organizer Agent's
+`include_summary=True` path. No new agent classes needed.
