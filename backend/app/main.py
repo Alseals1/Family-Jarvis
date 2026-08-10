@@ -12,6 +12,8 @@ from app.api.routes.important_dates import router as important_dates_router
 from app.api.routes.preferences import router as preferences_router
 from app.api.routes.calendar import router as calendar_router
 from app.api.routes.chat import router as chat_router
+from app.api.routes.briefing import router as briefing_router
+from app.api.routes.notifications import router as notifications_router
 
 settings = get_settings()
 
@@ -67,3 +69,5 @@ app.include_router(important_dates_router)
 app.include_router(preferences_router)
 app.include_router(calendar_router)
 app.include_router(chat_router)
+app.include_router(briefing_router)
+app.include_router(notifications_router)
