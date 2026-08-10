@@ -1,0 +1,55 @@
+.micBtn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.micBtn:hover {
+  background: var(--color-accent-dim);
+  box-shadow: var(--ring-glow);
+}
+
+/* Recording state — pulsing red glow */
+.recording {
+  border-color: #ff4466;
+  color: #ff4466;
+  animation: recordPulse 1s ease-in-out infinite;
+}
+
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 102, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(255, 68, 102, 0); }
+}
+
+/* Processing state — spinning cyan */
+.processing {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Speaking state — pulsing cyan rings */
+.speaking {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  animation: speakPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes speakPulse {
+  0%, 100% { box-shadow: var(--ring-glow); }
+  50% { box-shadow: 0 0 32px #00d4ff88, 0 0 12px #00d4ff66; }
+}
