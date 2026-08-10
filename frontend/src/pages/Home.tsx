@@ -1,3 +1,10 @@
+import MainLayout from '../components/MainLayout/MainLayout'
+import Chat from './Chat'
+
 export default function Home() {
-  return <div data-testid="home-page">Family JARVIS</div>
+  return (
+    <MainLayout>
+      <Chat />
+    </MainLayout>
+  )
 }
