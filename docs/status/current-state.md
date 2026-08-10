@@ -1,8 +1,8 @@
 # Family JARVIS — Current State
 
 **Updated:** 2026-08-10
-**Phase:** 6 — Proactive Intelligence
-**Status:** COMPLETE — 447/447 tests passing
+**Phase:** 7 — Voice
+**Status:** COMPLETE — 510/510 tests passing
 
 ---
 
@@ -25,7 +25,7 @@
 | DI wiring | Complete | Phase 5 Task 6 |
 | Eval suite | Complete | Phase 5 Task 7 |
 | Frontend | Shell only | Phase 8 not started |
-| Voice | Not started | Phase 7 |
+| Voice | Complete | Phase 7 — ElevenLabs STT + TTS |
 | CI/CD | Complete | GitHub Actions |
 | Deployment | Not started | Phase 10 |
 
@@ -114,13 +114,51 @@
 | `backend/tests/unit/test_proactive_routes.py` | T7 |
 | `backend/tests/unit/test_phase6_evaluation.py` | T8 |
 
+## Phase 7 Completion Summary
+
+### Tasks completed
+
+| Task | Branch | Tests | Status |
+|---|---|---|---|
+| T1: VoiceProvider ABC + ElevenLabsProvider | feat/voice-provider | 14 | Merged |
+| T2: POST /api/listen (STT) | feat/route-listen | 13 | Merged |
+| T3: POST /api/speak (TTS) | feat/route-speak | 12 | Merged |
+| T4: Router Wiring + DI | feat/voice-wiring | 10 | Merged |
+| T5: Eval Suite | feat/phase7-eval-suite | 14 | Merged |
+
+### Total tests: 510/510 passing (plan estimated ~509)
+
+### New files
+
+| File | Task |
+|---|---|
+| `backend/app/providers/voice/base.py` | T1 |
+| `backend/app/providers/voice/elevenlabs.py` | T1 |
+| `backend/tests/unit/test_voice_provider.py` | T1 |
+| `backend/app/api/routes/voice.py` | T2 + T3 |
+| `backend/tests/unit/test_route_listen.py` | T2 |
+| `backend/tests/unit/test_route_speak.py` | T3 |
+| `backend/tests/unit/test_voice_wiring.py` | T4 |
+| `backend/tests/unit/test_phase7_evaluation.py` | T5 |
+
+### Modified files
+
+| File | Task | Change |
+|---|---|---|
+| `backend/app/providers/voice/__init__.py` | T1 | Added `get_voice_provider()` factory |
+| `backend/app/config.py` | T1 | Added `elevenlabs_tts_model`, `elevenlabs_stt_model`, changed `elevenlabs_api_key` default to `""` |
+| `backend/app/main.py` | T4 | Registered voice router |
+| `backend/requirements.txt` | T1 | Added `python-multipart==0.0.12` |
+
 ## Active Blockers
 
 None.
 
 ## Next Phase
 
-Phase 7 — Voice: ElevenLabs Scribe STT, ElevenLabs TTS, server-side proxy
-routes /api/listen and /api/speak. Mic state management and barge-in
-handling on the frontend. No new agent code needed — voice is a transport
-layer over the existing Manager Agent.
+Phase 8 — PWA: React/TypeScript/Vite frontend, JARVIS aesthetic
+(dark near-black + cyan-teal HUD, approved screenshot in `javisDemo/`),
+chat interface, calendar display, family dashboard. Voice frontend
+(mic state, barge-in handling, audio playback) integrates with
+`/api/listen` and `/api/speak`. Manifest + service worker for
+iPad/iPhone/desktop install.
