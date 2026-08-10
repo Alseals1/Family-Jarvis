@@ -22,5 +22,8 @@ anyio==4.7.0
 pytest==8.3.2
 pytest-asyncio==0.23.8
 
+# Scheduler (background jobs — Phase 6)
+apscheduler==3.10.4
+
 # Environment
 python-dotenv==1.0.1
