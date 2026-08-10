@@ -1,8 +1,8 @@
 # Family JARVIS — Current State
 
 **Updated:** 2026-08-10
-**Phase:** 7 — Voice
-**Status:** COMPLETE — 510/510 tests passing
+**Phase:** 8 — PWA (Frontend)
+**Status:** COMPLETE — 510 backend + 80 frontend = 590 tests passing
 
 ---
 
@@ -24,7 +24,7 @@
 | Specialist routing | Complete | Phase 5 Task 5 |
 | DI wiring | Complete | Phase 5 Task 6 |
 | Eval suite | Complete | Phase 5 Task 7 |
-| Frontend | Shell only | Phase 8 not started |
+| Frontend | Complete | Phase 8 — PWA, JARVIS aesthetic, chat, voice, dashboard |
 | Voice | Complete | Phase 7 — ElevenLabs STT + TTS |
 | CI/CD | Complete | GitHub Actions |
 | Deployment | Not started | Phase 10 |
@@ -150,15 +150,46 @@
 | `backend/app/main.py` | T4 | Registered voice router |
 | `backend/requirements.txt` | T1 | Added `python-multipart==0.0.12` |
 
+## Phase 8 Completion Summary
+
+### Tasks completed
+
+| Task | Branch | Tests | Status |
+|---|---|---|---|
+| T1: Design System | feat/design-system | 9 | Merged |
+| T2: Auth UI | feat/auth-ui | 10 | Merged |
+| T3: Chat UI | feat/chat-ui | 12 | Merged |
+| T4: Voice UI | feat/voice-ui | 12 | Merged |
+| T5: Dashboard | feat/dashboard | 11 | Merged |
+| T6: PWA | feat/pwa | 10 | Merged |
+| T7: Eval Suite | feat/phase8-eval-suite | 14 | Merged |
+
+### Total tests: 80 frontend / 510 backend = 590 total
+
+### New frontend files
+
+| File | Task |
+|---|---|
+| `frontend/src/styles/tokens.css` + `global.css` | T1 |
+| `frontend/src/components/HUDRing/` + `Button/` + `Card/` | T1 |
+| `frontend/src/contexts/AuthContext.tsx` | T2 |
+| `frontend/src/pages/LoginPage/` | T2 |
+| `frontend/src/components/ProtectedRoute/` | T2 |
+| `frontend/src/hooks/useChat.ts` | T3 |
+| `frontend/src/components/MessageThread/` + `MessageBubble/` + `ChatInput/` + `ThinkingIndicator/` | T3 |
+| `frontend/src/hooks/useVoiceState.ts` + `useAudioRecorder.ts` + `useVoiceConversation.ts` | T4 |
+| `frontend/src/components/MicButton/` | T4 |
+| `frontend/src/api/voice.ts` | T4 |
+| `frontend/src/components/MainLayout/` + `BriefingCard/` + `NotificationsPanel/` | T5 |
+| `frontend/src/hooks/useBriefing.ts` + `useNotifications.ts` | T5 |
+| `frontend/public/manifest.json` + `sw.js` + `icon-192.png` + `icon-512.png` | T6 |
+| `frontend/src/__tests__/design-system.test.tsx` through `phase8-evaluation.test.tsx` | T1–T7 |
+
 ## Active Blockers
 
 None.
 
 ## Next Phase
 
-Phase 8 — PWA: React/TypeScript/Vite frontend, JARVIS aesthetic
-(dark near-black + cyan-teal HUD, approved screenshot in `javisDemo/`),
-chat interface, calendar display, family dashboard. Voice frontend
-(mic state, barge-in handling, audio playback) integrates with
-`/api/listen` and `/api/speak`. Manifest + service worker for
-iPad/iPhone/desktop install.
+Phase 9 — Production: deploy frontend + API to Render, configure HTTPS, secrets,
+monitoring, error handling, rate limits, and per-family timezone scheduling.
