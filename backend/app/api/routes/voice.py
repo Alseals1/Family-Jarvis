@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from pydantic import BaseModel, field_validator
 
 from app.api.middleware.auth import get_current_user
+from app.config import get_settings
 from app.providers.voice import get_voice_provider
 from app.providers.voice.base import VoiceProvider, VoiceProviderError
 
@@ -116,9 +117,7 @@ async def speak(
     - Text is sanitized (null bytes stripped, truncated at 5000 chars) by
       the SpeakRequest validator before reaching the provider.
     """
-    from app.config import get_settings
-    settings = get_settings()
-    voice_id = settings.elevenlabs_voice_id
+    voice_id = get_settings().elevenlabs_voice_id
 
     try:
         audio_bytes = await voice.synthesize(body.text, voice_id)
