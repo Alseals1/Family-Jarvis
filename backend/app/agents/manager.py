@@ -19,8 +19,7 @@ Design rules:
     - family_id always comes from JWT, never from request body
     - No LLM call for BLOCKED intents (guardrail handles it token-free)
     - Model name comes from settings — never hardcoded
-    - Phase 5 stubs for DINNER_SUGGESTION and DATE_NIGHT return graceful
-      placeholder responses until specialists are implemented
+    - Specialists default to None — Phase 4 tests compile unchanged
     - External content (calendar descriptions) labeled as untrusted data
       in every system prompt
 """
@@ -29,14 +28,26 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from app.agents.context import ConversationContextManager
-from app.agents.contracts import ConversationTurn, IntentClassification, IntentType
+from app.agents.contracts import (
+    AgentResult,
+    AgentTask,
+    ConversationTurn,
+    IntentClassification,
+    IntentType,
+)
 from app.agents.data_fetcher import FamilyDataFetcher
 from app.agents.guardrails import GuardrailResult, check_response
 from app.agents.intent import classify_intent
 from app.providers.llm.base import LLMProvider, Message
+
+if TYPE_CHECKING:
+    from app.agents.organizer import OrganizerAgent
+    from app.agents.chef import ChefAgent
+    from app.agents.date_planner import DatePlannerAgent
 
 UTC = timezone.utc
 
@@ -50,12 +61,9 @@ class ManagerResponse:
     data_sources: list[str] = field(default_factory=list)
 
 
-_PHASE5_STUB = (
-    "That's something I'll be able to help with very soon — "
-    "dinner planning and date-night suggestions are coming in the next update."
-)
-
 _NO_DATA_RESPONSE = "I don't have that information yet. Once your family data is set up, I'll be able to help with that."
+
+_SPECIALIST_UNAVAILABLE = "I don't have enough information set up yet to answer that — let's get your family preferences configured first."
 
 
 def _format_events(events: list[dict]) -> str:
@@ -118,11 +126,17 @@ class ManagerAgent:
         data_fetcher: FamilyDataFetcher,
         context_manager: ConversationContextManager,
         model: str,
+        organizer: "OrganizerAgent | None" = None,
+        chef: "ChefAgent | None" = None,
+        date_planner: "DatePlannerAgent | None" = None,
     ) -> None:
         self._llm = llm
         self._data_fetcher = data_fetcher
         self._context_manager = context_manager
         self._model = model
+        self._organizer = organizer
+        self._chef = chef
+        self._date_planner = date_planner
 
     async def respond(
         self,
@@ -157,37 +171,102 @@ class ManagerAgent:
                 data_sources=data_sources,
             )
 
-        # Step 3: Phase 5 stubs
-        if intent.intent in (IntentType.DINNER_SUGGESTION, IntentType.DATE_NIGHT):
-            self._save_turns(session_id, message, _PHASE5_STUB, agent_calls, data_sources)
-            return ManagerResponse(
-                response=_PHASE5_STUB,
-                session_id=session_id,
-                intent=intent.intent,
-                agent_calls=agent_calls,
-                data_sources=data_sources,
-            )
-
-        # Step 4: Fetch family members (always — for system prompt + guardrail name verification)
+        # Step 3: Fetch family members (always — for system prompt + guardrail name verification)
         family_members = await self._data_fetcher.get_family_members(family_id)
         data_sources.append("family_members")
         verified_names = [m["name"] for m in family_members]
 
-        # Step 5: Fetch intent-specific data
+        # Step 4: Fetch intent-specific data and route to specialists
         data_block = ""
 
-        if intent.intent == IntentType.CALENDAR_QUERY:
-            agent_calls.append("data_fetcher.get_calendar_events_and_analysis")
+        if intent.intent == IntentType.DINNER_SUGGESTION:
+            # Route to Chef specialist
+            agent_calls.append("chef")
+            result = await self._route_to_chef(family_id, intent, context)
+            if result is None or not result.success:
+                specialist_response = _SPECIALIST_UNAVAILABLE
+                self._save_turns(session_id, message, specialist_response, agent_calls, data_sources)
+                return ManagerResponse(
+                    response=specialist_response,
+                    session_id=session_id,
+                    intent=intent.intent,
+                    agent_calls=agent_calls,
+                    data_sources=data_sources,
+                )
+            if result.data.get("recommendation") == "no_data":
+                no_pref_response = "I don't know your family's food preferences yet. Once you set those up, I'll be able to suggest dinner ideas."
+                self._save_turns(session_id, message, no_pref_response, agent_calls, data_sources)
+                return ManagerResponse(
+                    response=no_pref_response,
+                    session_id=session_id,
+                    intent=intent.intent,
+                    agent_calls=agent_calls,
+                    data_sources=result.data_sources,
+                )
+            data_sources.extend(result.data_sources)
+            data_block = self._build_specialist_data_block(intent.intent, result)
+
+        elif intent.intent == IntentType.DATE_NIGHT:
+            # Pre-fetch availability windows, then route to Date Planner
+            agent_calls.append("organizer")
+            agent_calls.append("date_planner")
+            start_dt = datetime.now(UTC)
+            end_dt = start_dt + timedelta(days=30)
+            windows = await self._data_fetcher.get_availability_windows(
+                family_id,
+                start=start_dt,
+                end=end_dt,
+                min_window_minutes=90,
+            )
             data_sources.append("calendar_events")
-            start, end = _resolve_date_range(intent, today)
-            calendar_data = await self._data_fetcher.get_calendar_events_and_analysis(
-                family_id, start, end
-            )
-            data_block = (
-                f"[CALENDAR DATA for {start.date()} to {end.date()}]\n"
-                f"Events:\n{_format_events(calendar_data['events'])}\n"
-                f"Conflicts:\n{_format_conflicts(calendar_data['conflicts'])}"
-            )
+            result = await self._route_to_date_planner(family_id, intent, context, windows)
+            if result is None or not result.success:
+                specialist_response = _SPECIALIST_UNAVAILABLE
+                self._save_turns(session_id, message, specialist_response, agent_calls, data_sources)
+                return ManagerResponse(
+                    response=specialist_response,
+                    session_id=session_id,
+                    intent=intent.intent,
+                    agent_calls=agent_calls,
+                    data_sources=data_sources,
+                )
+            data_sources.extend(result.data_sources)
+            data_block = self._build_specialist_data_block(intent.intent, result)
+
+        elif intent.intent == IntentType.CALENDAR_QUERY:
+            if _is_multi_day(intent) and self._organizer is not None:
+                # Multi-day: delegate to Organizer
+                agent_calls.append("organizer")
+                org_result = await self._route_to_organizer(family_id, intent, context)
+                if org_result is not None and org_result.success:
+                    data_sources.extend(org_result.data_sources)
+                    data_block = self._build_specialist_data_block(intent.intent, org_result)
+                else:
+                    # Fallback to direct path
+                    agent_calls.append("data_fetcher.get_calendar_events_and_analysis")
+                    data_sources.append("calendar_events")
+                    start, end = _resolve_date_range(intent, today)
+                    calendar_data = await self._data_fetcher.get_calendar_events_and_analysis(
+                        family_id, start, end
+                    )
+                    data_block = (
+                        f"[CALENDAR DATA for {start.date()} to {end.date()}]\n"
+                        f"Events:\n{_format_events(calendar_data['events'])}\n"
+                        f"Conflicts:\n{_format_conflicts(calendar_data['conflicts'])}"
+                    )
+            else:
+                # Single-day or no organizer: direct path (Phase 4 behavior unchanged)
+                agent_calls.append("data_fetcher.get_calendar_events_and_analysis")
+                data_sources.append("calendar_events")
+                start, end = _resolve_date_range(intent, today)
+                calendar_data = await self._data_fetcher.get_calendar_events_and_analysis(
+                    family_id, start, end
+                )
+                data_block = (
+                    f"[CALENDAR DATA for {start.date()} to {end.date()}]\n"
+                    f"Events:\n{_format_events(calendar_data['events'])}\n"
+                    f"Conflicts:\n{_format_conflicts(calendar_data['conflicts'])}"
+                )
 
         elif intent.intent == IntentType.IMPORTANT_DATE:
             agent_calls.append("data_fetcher.get_upcoming_important_dates")
@@ -303,6 +382,167 @@ class ManagerAgent:
                 data_sources=list(data_sources),
             ),
         )
+
+    async def _route_to_chef(
+        self,
+        family_id: str,
+        intent: IntentClassification,
+        context: list[ConversationTurn],
+    ) -> "AgentResult | None":
+        """
+        Build AgentTask for Chef, invoke ChefAgent.run(), return AgentResult.
+        Returns None if chef specialist is not configured.
+        """
+        if self._chef is None:
+            return None
+        task = AgentTask(
+            task_id=str(uuid.uuid4()),
+            task_type=intent.intent.value,
+            family_id=family_id,
+            requested_by="manager",
+            inputs={
+                "cooking_time_minutes": 60,
+                "people_eating": 2,
+                "budget": "medium",
+            },
+            context={
+                "conversation_turns": len(context),
+                "reference_type": intent.reference_type,
+            },
+            constraints=[],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        return await self._chef.run(task)
+
+    async def _route_to_date_planner(
+        self,
+        family_id: str,
+        intent: IntentClassification,
+        context: list[ConversationTurn],
+        availability_windows: list[dict],
+    ) -> "AgentResult | None":
+        """
+        Build AgentTask for Date Planner, invoke DatePlannerAgent.run(), return AgentResult.
+        Returns None if date_planner specialist is not configured.
+        """
+        if self._date_planner is None:
+            return None
+        task = AgentTask(
+            task_id=str(uuid.uuid4()),
+            task_type=intent.intent.value,
+            family_id=family_id,
+            requested_by="manager",
+            inputs={
+                "availability_windows": availability_windows,
+                "look_ahead_days": 30,
+            },
+            context={
+                "conversation_turns": len(context),
+                "reference_type": intent.reference_type,
+            },
+            constraints=[],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        return await self._date_planner.run(task)
+
+    async def _route_to_organizer(
+        self,
+        family_id: str,
+        intent: IntentClassification,
+        context: list[ConversationTurn],
+    ) -> "AgentResult | None":
+        """
+        Build AgentTask for Organizer, invoke OrganizerAgent.run(), return AgentResult.
+        Returns None if organizer specialist is not configured (falls back to direct path).
+        """
+        if self._organizer is None:
+            return None
+        date_range = intent.date_range or {}
+        task = AgentTask(
+            task_id=str(uuid.uuid4()),
+            task_type=intent.intent.value,
+            family_id=family_id,
+            requested_by="manager",
+            inputs={
+                "date_range": date_range,
+                "members": ["all"],
+                "include_summary": True,
+                "include_availability": True,
+            },
+            context={
+                "conversation_turns": len(context),
+                "reference_type": intent.reference_type,
+            },
+            constraints=[],
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        return await self._organizer.run(task)
+
+    def _build_specialist_data_block(
+        self,
+        intent: IntentType,
+        result: "AgentResult",
+    ) -> str:
+        """
+        Convert AgentResult.data to a structured data block string for the LLM prompt.
+        All specialist data is labeled [SPECIALIST DATA] — untrusted source.
+        Follows same pattern as existing [CALENDAR DATA] blocks.
+        """
+        data = result.data
+        lines = [f"[SPECIALIST DATA — {intent.value}]"]
+
+        if intent == IntentType.DINNER_SUGGESTION:
+            lines.append(f"Recommendation: {data.get('recommendation', '')}")
+            lines.append(f"Reason: {data.get('reason', '')}")
+            alternatives = data.get("alternatives", [])
+            if alternatives:
+                lines.append(f"Alternatives: {', '.join(alternatives)}")
+            shopping = data.get("shopping_needed", [])
+            if shopping:
+                lines.append(f"Shopping needed: {', '.join(shopping)}")
+
+        elif intent == IntentType.DATE_NIGHT:
+            rec = data.get("recommendation", {})
+            lines.append(f"Best date: {rec.get('date', 'not found')}")
+            lines.append(f"Time: {rec.get('time_window', '')}")
+            lines.append(f"Activity: {rec.get('activity', '')}")
+            lines.append(f"Reason: {rec.get('reason', '')}")
+            alternatives = rec.get("alternatives", [])
+            if alternatives:
+                alt_strs = [f"{a.get('date', '')} — {a.get('activity', '')}" for a in alternatives]
+                lines.append(f"Alternatives: {'; '.join(alt_strs)}")
+            lines.append("Note: You will need to make any bookings yourselves.")
+
+        elif intent == IntentType.CALENDAR_QUERY:
+            events = data.get("events", [])
+            conflicts = data.get("conflicts", [])
+            summary = data.get("briefing_summary")
+            if summary:
+                lines.append(f"Summary: {summary}")
+            lines.append(f"Events: {len(events)} found")
+            if conflicts:
+                lines.append(f"Conflicts: {len(conflicts)} detected")
+            else:
+                lines.append("Conflicts: None")
+
+        else:
+            # Generic fallback
+            for k, v in data.items():
+                lines.append(f"{k}: {v}")
+
+        return "\n".join(lines)
+
+
+def _is_multi_day(intent: IntentClassification) -> bool:
+    """Return True if the intent's date range spans more than 2 days."""
+    if not intent.date_range:
+        return False
+    try:
+        start = date.fromisoformat(intent.date_range["start"])
+        end = date.fromisoformat(intent.date_range["end"])
+        return (end - start).days > 2
+    except (KeyError, ValueError):
+        return False
 
 
 def _resolve_date_range(
