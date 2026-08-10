@@ -203,3 +203,200 @@ class FamilyDataFetcher:
             }
         ).execute()
         return f"Got it — I've saved that to memory: \"{content}\""
+
+    # ------------------------------------------------------------------
+    # Specialist agent data methods (Phase 5)
+    # ------------------------------------------------------------------
+
+    async def get_food_preferences(
+        self,
+        family_id: str,
+    ) -> dict:
+        """
+        Return family food preferences grouped by type.
+
+        Queries food_preferences table. Rows with family_member_id = null are
+        family-wide; per-member rows are merged in. Restrictions and allergies
+        are hard constraints — never elided.
+
+        Returns:
+            {
+                "favorites": list[str],
+                "dislikes": list[str],
+                "restrictions": list[str],  # hard constraint
+                "allergies": list[str],     # hard constraint
+            }
+        """
+        result = (
+            self._db_admin.table("food_preferences")
+            .select("preference_type, value, family_member_id")
+            .eq("family_id", family_id)
+            .execute()
+        )
+        rows = result.data or []
+
+        grouped: dict[str, list[str]] = {
+            "favorites": [],
+            "dislikes": [],
+            "restrictions": [],
+            "allergies": [],
+        }
+        for row in rows:
+            ptype = row.get("preference_type", "").lower()
+            value = row.get("value", "")
+            if ptype in grouped and value:
+                grouped[ptype].append(value)
+
+        return grouped
+
+    async def get_recent_meals(
+        self,
+        family_id: str,
+        days_back: int = 14,
+    ) -> list[str]:
+        """
+        Return recently logged meals from the memories table where
+        category = 'meal'. Returns meal name strings, most recent first.
+        Returns [] if no meal memories exist.
+        """
+        since = (date.today() - timedelta(days=days_back)).isoformat()
+        result = (
+            self._db_admin.table("memories")
+            .select("content, created_at")
+            .eq("family_id", family_id)
+            .eq("category", "meal")
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        rows = result.data or []
+        return [row["content"] for row in rows if row.get("content")]
+
+    async def get_date_history(
+        self,
+        family_id: str,
+        limit: int = 10,
+    ) -> list[dict]:
+        """
+        Return recent date-night history from the date_history table.
+        Sorted most-recent-first. Returns [] if no history.
+
+        Returns:
+            [
+                {
+                    "date": "2026-07-18",
+                    "activity": "dinner and a movie",
+                    "restaurant": "Carmine's Italian",
+                    "notes": "great wine list",
+                    "rating": 5,
+                },
+                ...
+            ]
+        """
+        result = (
+            self._db_admin.table("date_history")
+            .select("date, activity, restaurant, notes, rating")
+            .eq("family_id", family_id)
+            .order("date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        rows = result.data or []
+        return [
+            {
+                "date": row.get("date"),
+                "activity": row.get("activity"),
+                "restaurant": row.get("restaurant"),
+                "notes": row.get("notes"),
+                "rating": row.get("rating"),
+            }
+            for row in rows
+        ]
+
+    async def get_family_preferences(
+        self,
+        family_id: str,
+        category: str,
+    ) -> dict:
+        """
+        Return all preferences for the family in the given category.
+
+        Queries the preferences table and returns a flat key→value dict.
+        Family-wide rows (member_id = null) are the base; per-member rows
+        are included under a namespaced key ({member_id}.{key}).
+        Returns {} if no preferences exist for the category.
+        """
+        result = (
+            self._db_admin.table("preferences")
+            .select("key, value, family_member_id")
+            .eq("family_id", family_id)
+            .eq("category", category)
+            .execute()
+        )
+        rows = result.data or []
+
+        prefs: dict[str, str] = {}
+        for row in rows:
+            key = row.get("key", "")
+            value = row.get("value", "")
+            member_id = row.get("family_member_id")
+            if not key:
+                continue
+            if member_id:
+                prefs[f"{member_id}.{key}"] = value
+            else:
+                prefs[key] = value
+
+        return prefs
+
+    async def get_availability_windows(
+        self,
+        family_id: str,
+        start: datetime,
+        end: datetime,
+        min_window_minutes: int = 90,
+    ) -> list[dict]:
+        """
+        Return shared family availability windows across the date range.
+
+        Calls get_events_in_range + get_family_availability (logic/availability.py).
+        Only returns windows where ALL family members are free simultaneously.
+        min_window_minutes=90 by default (date-night planning needs real blocks).
+
+        Returns:
+            [
+                {
+                    "date": "2026-08-22",
+                    "start_time": "2026-08-22T18:00:00+00:00",
+                    "end_time": "2026-08-22T22:00:00+00:00",
+                    "duration_minutes": 240,
+                },
+                ...
+            ]
+        """
+        rows = await get_events_in_range(family_id, start, end, self._db)
+        events = [_row_to_calendar_event(r) for r in rows]
+
+        member_ids = list({e.family_member_id for e in events if e.family_member_id})
+
+        if not member_ids:
+            return []
+
+        windows = get_family_availability(
+            events=events,
+            member_ids=member_ids,
+            date_range_start=start,
+            date_range_end=end,
+            min_window_minutes=min_window_minutes,
+        )
+
+        return [
+            {
+                "date": w.date if isinstance(w.date, str) else w.date.isoformat(),
+                "start_time": w.start_time.isoformat(),
+                "end_time": w.end_time.isoformat(),
+                "duration_minutes": w.duration_minutes,
+            }
+            for w in windows
+            if w.duration_minutes >= min_window_minutes
+        ]
