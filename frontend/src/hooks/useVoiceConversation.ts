@@ -4,7 +4,8 @@ import { useAudioRecorder } from './useAudioRecorder'
 import { transcribeAudio, synthesizeSpeech } from '../api/voice'
 
 interface UseVoiceConversationOptions {
-  sendMessage: (text: string, token?: string) => Promise<void>
+  /** Must resolve with JARVIS's reply — that is what gets spoken. */
+  sendMessage: (text: string, token?: string) => Promise<string | null>
   token: string | undefined
   onTranscript?: (text: string) => void
 }
@@ -47,11 +48,17 @@ export function useVoiceConversation({
         const { transcript } = await transcribeAudio(blob, token)
         if (onTranscript) onTranscript(transcript)
 
-        await sendMessage(transcript, token)
+        const reply = await sendMessage(transcript, token)
 
-        // Get JARVIS response and synthesize
+        // Speak JARVIS's reply — never the transcript. Synthesizing the
+        // transcript makes JARVIS parrot the user back instead of answering.
+        if (!reply) {
+          stopSpeaking()
+          return
+        }
+
         startSpeaking()
-        const audioBlob = await synthesizeSpeech(transcript, token)
+        const audioBlob = await synthesizeSpeech(reply, token)
         const url = URL.createObjectURL(audioBlob)
         const audio = new Audio(url)
         audioRef.current = audio

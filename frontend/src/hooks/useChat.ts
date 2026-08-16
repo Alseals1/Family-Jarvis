@@ -16,7 +16,8 @@ interface UseChatReturn {
   messages: ChatMessage[]
   loading: boolean
   error: string | null
-  sendMessage: (text: string, token?: string) => Promise<void>
+  /** Resolves with JARVIS's reply text, or null if the request failed. */
+  sendMessage: (text: string, token?: string) => Promise<string | null>
   conversationId: string | null
 }
 
@@ -26,7 +27,7 @@ export function useChat(): UseChatReturn {
   const [error, setError] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
 
-  const sendMessage = useCallback(async (text: string, token?: string) => {
+  const sendMessage = useCallback(async (text: string, token?: string): Promise<string | null> => {
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -51,8 +52,12 @@ export function useChat(): UseChatReturn {
         content: data.response,
       }
       setMessages(prev => [...prev, assistantMsg])
+      // Returned so voice callers can speak the reply. Without this they have
+      // no handle on it and can only reach for the transcript.
+      return data.response
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
+      return null
     } finally {
       setLoading(false)
     }
