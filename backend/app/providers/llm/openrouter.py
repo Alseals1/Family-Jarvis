@@ -36,6 +36,12 @@ class OpenRouterProvider(LLMProvider):
                     "temperature": temperature,
                 },
             )
+            if response.status_code == 429:
+                raise httpx.HTTPStatusError(
+                    "JARVIS is thinking too fast — please wait a moment and try again.",
+                    request=response.request,
+                    response=response,
+                )
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"]
 

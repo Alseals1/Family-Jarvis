@@ -108,7 +108,7 @@ describe('useChat hook', () => {
   it('test_use_chat_adds_user_message_to_thread', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ response: 'JARVIS response', conversation_id: 'conv1' }),
+      json: async () => ({ response: 'JARVIS response', session_id: 'conv1' }),
     })
 
     const { result } = renderHook(() => useChat())
@@ -123,7 +123,7 @@ describe('useChat hook', () => {
   it('test_use_chat_adds_jarvis_response_to_thread', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ response: 'Hello from JARVIS', conversation_id: 'conv1' }),
+      json: async () => ({ response: 'Hello from JARVIS', session_id: 'conv1' }),
     })
 
     const { result } = renderHook(() => useChat())
@@ -154,7 +154,7 @@ describe('useChat hook', () => {
     await act(async () => {
       resolveResponse!({
         ok: true,
-        json: async () => ({ response: 'done', conversation_id: 'c1' }),
+        json: async () => ({ response: 'done', session_id: 'c1' }),
       })
       await pendingPromise
     })
@@ -169,3 +169,48 @@ function renderInRouter(ui: React.ReactElement) {
 
 // Make renderInRouter used (keeps TS happy)
 void renderInRouter
+
+// --- Chat page error banner --------------------------------------------------
+//
+// Request failures (notably free-tier 429s) used to fail silently: the
+// thinking indicator stopped and nothing else happened.
+
+const { default: ChatPage } = await import('../pages/Chat')
+const { AuthProvider } = await import('../contexts/AuthContext')
+
+describe('Chat page error surfacing', () => {
+  function renderChatPage() {
+    return render(
+      <MemoryRouter>
+        <AuthProvider>
+          <ChatPage />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('test_chat_page_shows_error_banner_on_failed_send', async () => {
+    fetchMock.mockRejectedValue(new Error('429 Too Many Requests'))
+
+    await act(async () => { renderChatPage() })
+
+    const textarea = screen.getByRole('textbox')
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: 'Hello' } })
+      fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false })
+    })
+
+    expect(await screen.findByText(/429 Too Many Requests/)).toBeInTheDocument()
+  })
+
+  it('test_chat_page_has_no_error_banner_initially', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ response: 'hi', session_id: 's1' }),
+    })
+
+    await act(async () => { renderChatPage() })
+
+    expect(screen.queryByText(/Too Many Requests/)).not.toBeInTheDocument()
+  })
+})

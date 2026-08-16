@@ -221,3 +221,70 @@ def test_chat_passes_session_id_to_manager():
 
     assert resp.status_code == 200
     assert captured_session_id["session_id"] == "my-session-xyz"
+
+
+# --- Upstream 429 handling (free-tier model rate limits) ---------------------
+#
+# The free-tier OpenRouter model returns 429 under light load. That must
+# surface as a 429 with a user-facing message, not a 500.
+
+
+def _respond_raising(exc: Exception):
+    async def _raise(self, message, family_id, session_id):
+        raise exc
+    return _raise
+
+
+def test_chat_returns_429_when_upstream_model_rate_limits():
+    client = _app()
+    upstream = Exception("Client error '429 Too Many Requests' for url '...'")
+
+    with patch("app.api.middleware.auth.get_supabase_admin", return_value=_mock_auth_admin()), \
+         patch("app.api.middleware.auth.get_family_id_for_user", return_value=FAMILY_ID), \
+         patch("app.api.routes.chat.get_supabase", return_value=MagicMock()), \
+         patch("app.api.routes.chat.get_supabase_admin", return_value=MagicMock()), \
+         patch("app.api.routes.chat.get_llm_provider", return_value=MagicMock()), \
+         patch("app.agents.manager.ManagerAgent.respond", _respond_raising(upstream)):
+
+        resp = client.post("/api/chat", json={"message": "Hello"}, headers=AUTH_HEADER)
+
+    assert resp.status_code == 429
+    assert "thinking too fast" in resp.json()["detail"]
+
+
+def test_chat_429_message_is_user_facing_not_raw_upstream_error():
+    """The caller must never see the raw upstream error text."""
+    client = _app()
+    upstream = Exception("429 Too Many Requests: openrouter quota key sk-or-secret")
+
+    with patch("app.api.middleware.auth.get_supabase_admin", return_value=_mock_auth_admin()), \
+         patch("app.api.middleware.auth.get_family_id_for_user", return_value=FAMILY_ID), \
+         patch("app.api.routes.chat.get_supabase", return_value=MagicMock()), \
+         patch("app.api.routes.chat.get_supabase_admin", return_value=MagicMock()), \
+         patch("app.api.routes.chat.get_llm_provider", return_value=MagicMock()), \
+         patch("app.agents.manager.ManagerAgent.respond", _respond_raising(upstream)):
+
+        resp = client.post("/api/chat", json={"message": "Hello"}, headers=AUTH_HEADER)
+
+    assert resp.status_code == 429
+    detail = resp.json()["detail"]
+    assert "sk-or-secret" not in detail
+    assert "quota" not in detail
+
+
+def test_chat_non_429_errors_are_not_masked_as_429():
+    """A genuine failure must not be reported to the user as a rate limit."""
+    client = _app()
+    upstream = ValueError("calendar provider exploded")
+
+    with patch("app.api.middleware.auth.get_supabase_admin", return_value=_mock_auth_admin()), \
+         patch("app.api.middleware.auth.get_family_id_for_user", return_value=FAMILY_ID), \
+         patch("app.api.routes.chat.get_supabase", return_value=MagicMock()), \
+         patch("app.api.routes.chat.get_supabase_admin", return_value=MagicMock()), \
+         patch("app.api.routes.chat.get_llm_provider", return_value=MagicMock()), \
+         patch("app.agents.manager.ManagerAgent.respond", _respond_raising(upstream)):
+
+        resp = client.post("/api/chat", json={"message": "Hello"}, headers=AUTH_HEADER)
+
+    assert resp.status_code != 429
+    assert resp.status_code >= 500

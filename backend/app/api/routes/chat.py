@@ -132,11 +132,19 @@ async def chat(
         ),
     )
 
-    result = await manager.respond(
-        message=request.message,
-        family_id=family_id,
-        session_id=session_id,
-    )
+    try:
+        result = await manager.respond(
+            message=request.message,
+            family_id=family_id,
+            session_id=session_id,
+        )
+    except Exception as e:
+        if "429" in str(e) or "Too Many Requests" in str(e) or "thinking too fast" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="JARVIS is thinking too fast — please wait a moment and try again.",
+            )
+        raise
 
     return ChatResponse(
         response=result.response,

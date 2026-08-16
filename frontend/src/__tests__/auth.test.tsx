@@ -189,4 +189,56 @@ describe('ProtectedRoute', () => {
       expect(screen.getByText('Protected Content')).toBeInTheDocument()
     })
   })
+
+  // While the session resolves, ProtectedRoute used to render null — a blank
+  // screen that looked like a hung app during local runs.
+  it('test_protected_route_shows_loading_state_while_session_resolves', async () => {
+    // Never resolves: hold the component in its loading branch.
+    authMock.getSession.mockReturnValue(new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <div>Protected Content</div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/login" element={<div>Login Page</div>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText(/INITIALIZING/i)).toBeInTheDocument()
+  })
+
+  it('test_protected_route_does_not_flash_login_while_loading', async () => {
+    authMock.getSession.mockReturnValue(new Promise(() => {}))
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <div>Protected Content</div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/login" element={<div>Login Page</div>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    // A valid session must never be preempted by a redirect to /login.
+    expect(container.textContent).not.toMatch(/Login Page/)
+  })
 })

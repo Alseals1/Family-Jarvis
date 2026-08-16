@@ -61,7 +61,7 @@ beforeEach(() => {
     if (typeof url === 'string' && url.includes('/api/chat')) {
       return Promise.resolve({
         ok: true,
-        json: async () => ({ response: 'JARVIS response text', conversation_id: 'c1' }),
+        json: async () => ({ response: 'JARVIS response text', session_id: 'c1' }),
       })
     }
     if (typeof url === 'string' && url.includes('/api/briefing')) {

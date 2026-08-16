@@ -9,7 +9,7 @@ export interface ChatMessage {
 
 interface ChatResponse {
   response: string
-  conversation_id?: string
+  session_id?: string
 }
 
 interface UseChatReturn {
@@ -39,11 +39,11 @@ export function useChat(): UseChatReturn {
     try {
       const data = await api.post<ChatResponse>(
         '/api/chat',
-        { message: text, conversation_id: conversationId },
+        { message: text, session_id: conversationId },
         token,
       )
-      if (data.conversation_id) {
-        setConversationId(data.conversation_id)
+      if (data.session_id) {
+        setConversationId(data.session_id)
       }
       const assistantMsg: ChatMessage = {
         id: `assistant-${Date.now()}`,
