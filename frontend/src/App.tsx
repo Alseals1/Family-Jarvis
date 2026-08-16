@@ -4,6 +4,8 @@ import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute'
 import LoginPage from './pages/LoginPage/LoginPage'
 import Home from './pages/Home'
 import Chat from './pages/Chat'
+import Calendar from './pages/Calendar'
+import MainLayout from './components/MainLayout/MainLayout'
 
 export default function App() {
   return (
@@ -24,6 +26,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Chat />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/calendar"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Calendar />
+                </MainLayout>
               </ProtectedRoute>
             }
           />

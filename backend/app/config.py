@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     jarvis_demo: bool = True
     jwt_secret: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    # Where the OAuth callback sends the browser once the flow completes.
+    frontend_url: str = "http://localhost:5173"
 
     @property
     def cors_origins_list(self) -> list[str]:

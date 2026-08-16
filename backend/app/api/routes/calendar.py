@@ -19,11 +19,13 @@ Security invariants enforced here:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 
 from app.api.middleware.auth import get_current_user
 from app.config import get_settings
@@ -54,13 +56,78 @@ from app.providers.calendar.google import GoogleCalendarProvider, TokenExpiredEr
 
 UTC = ZoneInfo("UTC")
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 # In-memory state (replaced by Redis in production scaling)
-_oauth_states: dict[str, str] = {}     # state_token → family_id
+#
+# The OAuth callback arrives as a browser redirect from accounts.google.com and
+# therefore carries no Authorization header — it cannot be authenticated the way
+# our other routes are. The state token is what ties the callback back to the
+# user who started the flow: it is unguessable, single-use, server-side only,
+# and short-lived. That is precisely what OAuth state is for.
+_oauth_states: dict[str, dict] = {}    # state_token → {family_id, user_id, created_at}
 _last_sync: dict[str, datetime] = {}   # family_id → last sync timestamp
 
 SYNC_RATE_LIMIT_SECONDS = 300   # 5 minutes
+OAUTH_STATE_TTL_SECONDS = 600   # 10 minutes — an unfinished consent screen expires
+
+
+def _purge_expired_states(now: datetime | None = None) -> None:
+    """Drop state tokens past their TTL so abandoned flows cannot be resumed."""
+    now = now or datetime.now(UTC)
+    expired = [
+        token
+        for token, entry in _oauth_states.items()
+        if (now - entry["created_at"]).total_seconds() > OAUTH_STATE_TTL_SECONDS
+    ]
+    for token in expired:
+        _oauth_states.pop(token, None)
+
+
+def _consume_oauth_state(state: str) -> dict:
+    """
+    Validate and single-use-consume a state token.
+
+    Raises 400 on unknown, reused, or expired state — all of which are either a
+    CSRF attempt or a stale browser tab.
+    """
+    _purge_expired_states()
+    entry = _oauth_states.pop(state, None)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state parameter",
+        )
+    return entry
+
+
+def _oauth_redirect(ok: bool, reason: str | None = None, count: int | None = None) -> RedirectResponse:
+    """
+    Send the browser back to the app's calendar page with the outcome.
+
+    Only a coarse status travels in the URL. Tokens, calendar names, and raw
+    upstream error text stay server-side — a redirect URL lands in browser
+    history and server logs.
+    """
+    base = get_settings().frontend_url.rstrip("/")
+    if ok:
+        query = f"connected=1&count={count or 0}"
+    else:
+        # Constrain to a known slug so upstream text cannot reach the URL.
+        safe = _SAFE_OAUTH_REASONS.get(reason or "", "unknown_error")
+        query = f"connected=0&reason={safe}"
+    return RedirectResponse(url=f"{base}/calendar?{query}", status_code=302)
+
+
+_SAFE_OAUTH_REASONS = {
+    "access_denied": "access_denied",
+    "invalid_state": "invalid_state",
+    "missing_code_or_state": "missing_code_or_state",
+    "encryption_not_configured": "encryption_not_configured",
+    "token_exchange_failed": "token_exchange_failed",
+    "calendar_list_failed": "calendar_list_failed",
+}
 
 
 def _require_family(user: dict) -> str:
@@ -149,7 +216,14 @@ async def connect_google(user: dict = Depends(get_current_user)):
     """
     family_id = _require_family(user)
     state = str(uuid.uuid4())
-    _oauth_states[state] = family_id
+    # Identity is captured here, while we still have a verified JWT, and carried
+    # through Google on the state token — the callback has no JWT to read.
+    _oauth_states[state] = {
+        "family_id": family_id,
+        "user_id": user["user_id"],
+        "created_at": datetime.now(UTC),
+    }
+    _purge_expired_states()
 
     provider = _get_provider()
     oauth_url = provider.build_oauth_url(state=state)
@@ -162,38 +236,55 @@ async def connect_google(user: dict = Depends(get_current_user)):
 
 @router.get("/callback/google")
 async def google_oauth_callback(
-    code: str = Query(...),
-    state: str = Query(...),
-    user: dict = Depends(get_current_user),
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
 ):
     """
     Complete Google OAuth flow.
 
-    Validates state param (CSRF), exchanges code for tokens, encrypts them,
-    fetches the user's calendar list, stores each calendar in Supabase.
-    Token columns are never returned in the response.
-    """
-    family_id = _require_family(user)
+    Deliberately has no get_current_user dependency. Google sends the browser
+    here from accounts.google.com with no Authorization header, so requiring a
+    JWT made this endpoint permanently unreachable — it returned 403 for every
+    real callback. Identity comes from the state token instead, which was bound
+    to the family at connect time and is validated single-use here.
 
-    # CSRF validation: state must exist and match the family
-    stored_family = _oauth_states.pop(state, None)
-    if stored_family is None or stored_family != family_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired OAuth state parameter",
-        )
+    Ends in a redirect rather than JSON: the caller is a browser mid-navigation,
+    not our frontend's fetch client.
+
+    Token columns are never returned or placed in the redirect URL.
+    """
+    # The user declined consent, or Google rejected the request.
+    if error:
+        if state:
+            _oauth_states.pop(state, None)
+        return _oauth_redirect(ok=False, reason=error)
+
+    if not code or not state:
+        return _oauth_redirect(ok=False, reason="missing_code_or_state")
+
+    try:
+        entry = _consume_oauth_state(state)
+    except HTTPException:
+        return _oauth_redirect(ok=False, reason="invalid_state")
+
+    family_id = entry["family_id"]
+    user_id = entry["user_id"]
 
     s = get_settings()
     if not s.calendar_encryption_key:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Calendar encryption not configured",
-        )
+        return _oauth_redirect(ok=False, reason="encryption_not_configured")
 
     provider = _get_provider()
 
-    # Exchange authorization code for tokens
-    token_data = await provider.exchange_code_for_tokens(code)
+    # Exchange authorization code for tokens. A failure here is upstream —
+    # report it to the user via the redirect rather than a raw 500 page.
+    try:
+        token_data = await provider.exchange_code_for_tokens(code)
+    except Exception:
+        logger.exception("Google token exchange failed for family %s", family_id)
+        return _oauth_redirect(ok=False, reason="token_exchange_failed")
+
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
     expires_in = token_data.get("expires_in", 3600)
@@ -204,14 +295,19 @@ async def google_oauth_callback(
     refresh_enc = encrypt_token(refresh_token, s.calendar_encryption_key)
 
     # Fetch the user's calendars to store connections
-    calendars = await provider.get_calendars(access_token)
+    try:
+        calendars = await provider.get_calendars(access_token)
+    except Exception:
+        logger.exception("Google calendar list failed for family %s", family_id)
+        return _oauth_redirect(ok=False, reason="calendar_list_failed")
+
     db_admin = get_supabase_admin()
 
     stored_calendars = []
     for cal in calendars:
         cal_id = await store_calendar_connection(
             family_id=family_id,
-            family_member_id=user["user_id"],
+            family_member_id=user_id,
             provider="google",
             external_id=cal["id"],
             name=cal.get("summary", cal["id"]),
@@ -222,10 +318,8 @@ async def google_oauth_callback(
         )
         stored_calendars.append({"id": cal_id, "name": cal.get("summary")})
 
-    return {
-        "connected": True,
-        "calendars": stored_calendars,
-    }
+    # Only the count travels in the URL — never calendar names or any token.
+    return _oauth_redirect(ok=True, count=len(stored_calendars))
 
 
 # ---------------------------------------------------------------------------

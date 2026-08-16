@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import BriefingCard from '../BriefingCard/BriefingCard'
 import NotificationsPanel from '../NotificationsPanel/NotificationsPanel'
@@ -32,6 +33,25 @@ export default function MainLayout({ children }: MainLayoutProps) {
           <span className={styles.statusText}>ONLINE</span>
         </div>
         <div className={styles.headerRight}>
+          <nav className={styles.nav} aria-label="Main">
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) =>
+                isActive ? `${styles.navLink} ${styles.navLinkActive}` : styles.navLink
+              }
+            >
+              Chat
+            </NavLink>
+            <NavLink
+              to="/calendar"
+              className={({ isActive }) =>
+                isActive ? `${styles.navLink} ${styles.navLinkActive}` : styles.navLink
+              }
+            >
+              Calendars
+            </NavLink>
+          </nav>
           <button
             className={styles.signOutBtn}
             onClick={() => void signOut()}

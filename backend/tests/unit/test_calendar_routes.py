@@ -62,6 +62,17 @@ def _app():
         return TestClient(app, raise_server_exceptions=False)
 
 
+def _state_entry(family_id: str = FAMILY_ID, user_id: str = "user-marcus", age_seconds: int = 0) -> dict:
+    """Build an _oauth_states entry, optionally aged to test expiry."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    return {
+        "family_id": family_id,
+        "user_id": user_id,
+        "created_at": datetime.now(ZoneInfo("UTC")) - timedelta(seconds=age_seconds),
+    }
+
+
 def _mock_auth(family_id: str = FAMILY_ID) -> MagicMock:
     mock = MagicMock()
     result = MagicMock()
@@ -108,18 +119,23 @@ def test_connect_returns_oauth_url():
     assert "calendar.readonly" in data["oauth_url"]
 
 
-def test_callback_missing_state_returns_400():
-    """GET /callback/google with an unknown state → 400."""
+def test_callback_unknown_state_redirects_with_error():
+    """
+    An unknown state is still rejected — but as a redirect, not a 400.
+
+    The caller is a browser mid-navigation, so a JSON error body would render as
+    raw text. The rejection itself is unchanged: no state, no connection.
+    """
     client = _app()
-    with patch("app.api.middleware.auth.get_supabase_admin", return_value=_mock_auth()), \
-         patch("app.api.middleware.auth.get_family_id_for_user", return_value=FAMILY_ID), \
-         patch.dict("app.api.routes.calendar._oauth_states", {}):
+    with patch.dict("app.api.routes.calendar._oauth_states", {}, clear=True):
         resp = client.get(
             "/api/calendar/callback/google?code=test-code&state=bad-state",
-            headers={"Authorization": "Bearer tok"},
+            follow_redirects=False,
         )
 
-    assert resp.status_code == 400
+    assert resp.status_code == 302
+    assert "connected=0" in resp.headers["location"]
+    assert "reason=invalid_state" in resp.headers["location"]
 
 
 def test_callback_success_stores_encrypted_token():
@@ -141,20 +157,20 @@ def test_callback_success_stores_encrypted_token():
         stored_calls.append(kwargs)
         return "cal-001"
 
-    with patch("app.api.middleware.auth.get_supabase_admin", return_value=_mock_auth()), \
-         patch("app.api.middleware.auth.get_family_id_for_user", return_value=FAMILY_ID), \
-         patch("app.api.routes.calendar.get_supabase_admin", return_value=MagicMock()), \
+    with patch("app.api.routes.calendar.get_supabase_admin", return_value=MagicMock()), \
          patch("app.api.routes.calendar._get_provider", return_value=mock_provider), \
          patch("app.api.routes.calendar.store_calendar_connection",
                side_effect=mock_store), \
-         patch.dict("app.api.routes.calendar._oauth_states", {state: FAMILY_ID}):
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {state: _state_entry()}, clear=True):
+        # No Authorization header — this is how Google actually calls us.
         resp = client.get(
             f"/api/calendar/callback/google?code=auth-code&state={state}",
-            headers={"Authorization": "Bearer tok"},
+            follow_redirects=False,
         )
 
-    assert resp.status_code == 200
-    assert resp.json()["connected"] is True
+    assert resp.status_code == 302
+    assert "connected=1" in resp.headers["location"]
     assert len(stored_calls) == 1
     # Encrypted values must differ from plaintext
     assert stored_calls[0]["access_token_enc"] != "plain-access-token"
@@ -296,3 +312,186 @@ def test_events_family_id_from_jwt_not_query_param():
     assert len(queried_family_ids) > 0
     assert all(fid == FAMILY_ID for fid in queried_family_ids)
     assert "evil-family" not in queried_family_ids
+
+
+# ---------------------------------------------------------------------------
+# OAuth callback — reachability and state security
+#
+# The callback previously required a JWT. Google redirects the browser here
+# from accounts.google.com with no Authorization header, so every real callback
+# got a 403 and no calendar could ever be connected. Identity now rides on the
+# state token, which makes that token the whole security boundary.
+# ---------------------------------------------------------------------------
+
+def _connect_mocks(mock_provider, stored_calls):
+    async def mock_store(**kwargs):
+        stored_calls.append(kwargs)
+        return "cal-001"
+
+    return [
+        patch("app.api.routes.calendar.get_supabase_admin", return_value=MagicMock()),
+        patch("app.api.routes.calendar._get_provider", return_value=mock_provider),
+        patch("app.api.routes.calendar.store_calendar_connection", side_effect=mock_store),
+    ]
+
+
+def _ok_provider():
+    p = MagicMock()
+    p.exchange_code_for_tokens = AsyncMock(return_value={
+        "access_token": "at", "refresh_token": "rt", "expires_in": 3600,
+    })
+    p.get_calendars = AsyncMock(return_value=[{"id": "primary", "summary": "Work"}])
+    return p
+
+
+def test_callback_works_without_authorization_header():
+    """The regression that made calendar connection impossible."""
+    client = _app()
+    stored: list = []
+    m = _connect_mocks(_ok_provider(), stored)
+    with m[0], m[1], m[2], \
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {"s1": _state_entry()}, clear=True):
+        resp = client.get(
+            "/api/calendar/callback/google?code=c&state=s1",
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 302
+    assert resp.status_code != 403
+    assert len(stored) == 1
+
+
+def test_callback_binds_family_from_state_not_request():
+    """family_id must come from the state token, never from a query param."""
+    client = _app()
+    stored: list = []
+    m = _connect_mocks(_ok_provider(), stored)
+    with m[0], m[1], m[2], \
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {"s1": _state_entry(family_id="fam-real")}, clear=True):
+        client.get(
+            "/api/calendar/callback/google?code=c&state=s1&family_id=fam-attacker",
+            follow_redirects=False,
+        )
+
+    assert stored[0]["family_id"] == "fam-real"
+
+
+def test_callback_state_is_single_use():
+    """A replayed state token must not connect a second time."""
+    client = _app()
+    stored: list = []
+    m = _connect_mocks(_ok_provider(), stored)
+    with m[0], m[1], m[2], \
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {"s1": _state_entry()}, clear=True):
+        first = client.get("/api/calendar/callback/google?code=c&state=s1",
+                           follow_redirects=False)
+        replay = client.get("/api/calendar/callback/google?code=c&state=s1",
+                            follow_redirects=False)
+
+    assert "connected=1" in first.headers["location"]
+    assert "reason=invalid_state" in replay.headers["location"]
+    assert len(stored) == 1
+
+
+def test_callback_rejects_expired_state():
+    """A stale consent screen must not be resumable."""
+    client = _app()
+    stored: list = []
+    m = _connect_mocks(_ok_provider(), stored)
+    with m[0], m[1], m[2], \
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {"s1": _state_entry(age_seconds=601)}, clear=True):
+        resp = client.get("/api/calendar/callback/google?code=c&state=s1",
+                          follow_redirects=False)
+
+    assert "reason=invalid_state" in resp.headers["location"]
+    assert stored == []
+
+
+def test_callback_handles_user_denying_consent():
+    client = _app()
+    with patch.dict("app.api.routes.calendar._oauth_states", {}, clear=True):
+        resp = client.get(
+            "/api/calendar/callback/google?error=access_denied&state=s1",
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 302
+    assert "reason=access_denied" in resp.headers["location"]
+
+
+def test_callback_handles_token_exchange_failure():
+    client = _app()
+    provider = _ok_provider()
+    provider.exchange_code_for_tokens = AsyncMock(side_effect=RuntimeError("boom"))
+    stored: list = []
+    m = _connect_mocks(provider, stored)
+    with m[0], m[1], m[2], \
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {"s1": _state_entry()}, clear=True):
+        resp = client.get("/api/calendar/callback/google?code=c&state=s1",
+                          follow_redirects=False)
+
+    assert "reason=token_exchange_failed" in resp.headers["location"]
+    assert stored == []
+
+
+def test_callback_redirect_never_contains_tokens():
+    """A redirect URL lands in browser history and server logs."""
+    client = _app()
+    stored: list = []
+    provider = _ok_provider()
+    provider.exchange_code_for_tokens = AsyncMock(return_value={
+        "access_token": "SECRET-ACCESS", "refresh_token": "SECRET-REFRESH", "expires_in": 3600,
+    })
+    m = _connect_mocks(provider, stored)
+    with m[0], m[1], m[2], \
+         patch.dict("app.api.routes.calendar._oauth_states",
+                    {"s1": _state_entry()}, clear=True):
+        resp = client.get("/api/calendar/callback/google?code=c&state=s1",
+                          follow_redirects=False)
+
+    location = resp.headers["location"]
+    assert "SECRET-ACCESS" not in location
+    assert "SECRET-REFRESH" not in location
+    assert "Work" not in location  # calendar names are not ours to leak either
+
+
+def test_callback_error_reason_is_from_allowlist():
+    """Upstream-controlled error text must not reach the redirect URL."""
+    client = _app()
+    with patch.dict("app.api.routes.calendar._oauth_states", {}, clear=True):
+        resp = client.get(
+            "/api/calendar/callback/google?error=<script>alert(1)</script>&state=s1",
+            follow_redirects=False,
+        )
+
+    location = resp.headers["location"]
+    assert "script" not in location
+    assert "reason=unknown_error" in location
+
+
+def test_connect_stores_user_id_in_state():
+    """The callback needs the user id later, and has no JWT to read it from."""
+    client = _app()
+    with patch("app.api.middleware.auth.get_supabase_admin", return_value=_mock_auth()), \
+         patch("app.api.middleware.auth.get_family_id_for_user", return_value=FAMILY_ID), \
+         patch.dict("app.api.routes.calendar._oauth_states", {}, clear=True):
+        resp = client.get("/api/calendar/connect/google",
+                          headers={"Authorization": "Bearer tok"})
+        from app.api.routes import calendar as cal_mod
+        entries = list(cal_mod._oauth_states.values())
+
+    assert resp.status_code == 200
+    assert entries[0]["family_id"] == FAMILY_ID
+    assert entries[0]["user_id"] == "user-marcus"
+
+
+def test_connect_still_requires_jwt():
+    """Starting the flow is authenticated even though completing it cannot be."""
+    client = _app()
+    resp = client.get("/api/calendar/connect/google")
+    assert resp.status_code in (401, 403)
