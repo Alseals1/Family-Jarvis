@@ -17,11 +17,11 @@ class Settings(BaseSettings):
     # OpenRouter
     openrouter_api_key: str
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model_manager: str = "google/gemma-4-31b-it:free"
-    openrouter_model_organizer: str = "google/gemma-4-31b-it:free"
-    openrouter_model_chef: str = "google/gemma-4-31b-it:free"
-    openrouter_model_planner: str = "google/gemma-4-31b-it:free"
-    openrouter_model_fast: str = "google/gemma-4-31b-it:free"
+    openrouter_model_manager: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_model_organizer: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_model_chef: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_model_planner: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_model_fast: str = "google/gemma-4-26b-a4b-it:free"
 
     # ElevenLabs
     elevenlabs_api_key: str = ""

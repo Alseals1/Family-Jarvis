@@ -81,7 +81,9 @@ class ElevenLabsProvider(VoiceProvider):
 
         if response.status_code != 200:
             raise VoiceProviderError(
-                f"ElevenLabs Scribe returned {response.status_code}"
+                f"ElevenLabs Scribe returned {response.status_code}",
+                status_code=response.status_code,
+                upstream_detail=_upstream_detail(response),
             )
 
         try:
@@ -137,10 +139,31 @@ class ElevenLabsProvider(VoiceProvider):
 
         if response.status_code != 200:
             raise VoiceProviderError(
-                f"ElevenLabs TTS returned {response.status_code}"
+                f"ElevenLabs TTS returned {response.status_code}",
+                status_code=response.status_code,
+                upstream_detail=_upstream_detail(response),
             )
 
         return response.content
+
+
+def _upstream_detail(response: httpx.Response) -> str:
+    """
+    Pull the provider's own error message out of an error response.
+
+    ElevenLabs nests it as {"detail": {"message": ..., "status": ...}}, but
+    falls back to a plain string on some endpoints. Truncated — this is for
+    server-side logs, not for display.
+    """
+    try:
+        body = response.json()
+    except Exception:
+        return response.text[:300]
+
+    detail = body.get("detail", body) if isinstance(body, dict) else body
+    if isinstance(detail, dict):
+        return str(detail.get("message") or detail.get("status") or detail)[:300]
+    return str(detail)[:300]
 
 
 def _ext_from_content_type(content_type: str) -> str:

@@ -18,7 +18,30 @@ from dataclasses import dataclass, field
 
 
 class VoiceProviderError(Exception):
-    """Raised when a voice provider API call fails or configuration is missing."""
+    """
+    Raised when a voice provider API call fails or configuration is missing.
+
+    Carries the upstream HTTP status (when the failure came from an API
+    response) so routes can distinguish a caller-fixable problem — expired key,
+    plan limit, rate limit — from a genuine provider outage. Without this, every
+    failure collapsed into an opaque 502 and had to be diagnosed by calling the
+    provider by hand.
+
+    Attributes:
+        status_code: upstream HTTP status, or None for timeouts/transport errors.
+        upstream_detail: provider's own error text. Logged server-side; never
+            returned to the browser verbatim.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        upstream_detail: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.upstream_detail = upstream_detail
 
 
 @dataclass

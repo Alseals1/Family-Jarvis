@@ -329,3 +329,89 @@ def test_speak_api_key_never_in_response_headers():
         assert api_key not in header_value, (
             f"API key found in response header '{header_name}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# Upstream status mapping
+#
+# Every provider failure used to collapse into "502 temporarily unavailable".
+# That misdiagnosed the two most common local-run failures: a paid-plan voice
+# (402) and a bad key (401), neither of which is temporary and neither of which
+# retrying will fix.
+# ---------------------------------------------------------------------------
+
+def _provider_raising(status_code: int | None, upstream: str = "upstream text"):
+    from app.providers.voice.base import VoiceProviderError
+    provider = MagicMock()
+    provider.synthesize = AsyncMock(
+        side_effect=VoiceProviderError(
+            f"ElevenLabs TTS returned {status_code}",
+            status_code=status_code,
+            upstream_detail=upstream,
+        )
+    )
+    return provider
+
+
+def _speak(provider):
+    client = _client_with_voice_override(provider)
+    with _auth_patches()[0], _auth_patches()[1], _settings_patch():
+        return client.post("/api/speak", json={"text": SAMPLE_TEXT}, headers=AUTH_HEADER)
+
+
+def test_speak_402_reports_paid_plan_requirement():
+    """The exact failure hit locally: a professional voice on a free plan."""
+    resp = _speak(_provider_raising(
+        402, "Free users cannot use library voices via the API."
+    ))
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "paid plan" in detail.lower()
+    assert "ELEVENLABS_VOICE_ID" in detail
+
+
+def test_speak_401_reports_api_key_problem():
+    resp = _speak(_provider_raising(401, "invalid api key"))
+    assert resp.status_code == 502
+    assert "ELEVENLABS_API_KEY" in resp.json()["detail"]
+
+
+def test_speak_404_reports_voice_not_found():
+    resp = _speak(_provider_raising(404, "voice not found"))
+    assert resp.status_code == 502
+    assert "ELEVENLABS_VOICE_ID" in resp.json()["detail"]
+
+
+def test_speak_429_maps_to_429_not_502():
+    """A rate limit is retryable, so it must not look like a gateway failure."""
+    resp = _speak(_provider_raising(429, "too many requests"))
+    assert resp.status_code == 429
+    assert "rate limited" in resp.json()["detail"].lower()
+
+
+def test_speak_unknown_status_falls_back_to_502():
+    resp = _speak(_provider_raising(500, "internal server error"))
+    assert resp.status_code == 502
+    assert "temporarily unavailable" in resp.json()["detail"].lower()
+
+
+def test_speak_timeout_without_status_falls_back_to_502():
+    """Transport failures carry no status and must still be handled."""
+    resp = _speak(_provider_raising(None, None))
+    assert resp.status_code == 502
+    assert "temporarily unavailable" in resp.json()["detail"].lower()
+
+
+def test_speak_never_leaks_upstream_error_text():
+    """Provider error bodies are for logs, not for the browser."""
+    resp = _speak(_provider_raising(
+        402, "Free users cannot use library voices. request_id=871dc3179904b877"
+    ))
+    body = resp.text
+    assert "request_id" not in body
+    assert "871dc3179904b877" not in body
+
+
+def test_speak_never_leaks_api_key_on_error():
+    resp = _speak(_provider_raising(401, "key test-xi-key-SECRET rejected"))
+    assert "test-xi-key-SECRET" not in resp.text

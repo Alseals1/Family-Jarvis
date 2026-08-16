@@ -297,3 +297,107 @@ def test_get_voice_provider_raises_when_api_key_missing():
         from app.providers.voice import get_voice_provider
         with pytest.raises(VoiceProviderError):
             get_voice_provider()
+
+
+# ---------------------------------------------------------------------------
+# Upstream status/detail capture
+#
+# Without these fields on the exception, the route cannot tell a plan limit
+# from an outage and every failure looks identical.
+# ---------------------------------------------------------------------------
+
+def _error_response(status_code: int, body, is_json: bool = True):
+    resp = MagicMock()
+    resp.status_code = status_code
+    if is_json:
+        resp.json.return_value = body
+    else:
+        resp.json.side_effect = ValueError("not json")
+        resp.text = body
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_synthesize_error_carries_status_code():
+    from app.providers.voice.elevenlabs import ElevenLabsProvider
+    from app.providers.voice.base import VoiceProviderError
+
+    resp = _error_response(402, {
+        "detail": {
+            "status": "payment_required",
+            "message": "Free users cannot use library voices via the API.",
+        }
+    })
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=resp)
+
+    with patch("httpx.AsyncClient", return_value=client):
+        provider = ElevenLabsProvider(api_key="k")
+        with pytest.raises(VoiceProviderError) as exc:
+            await provider.synthesize("hello", "voice-1")
+
+    assert exc.value.status_code == 402
+    assert "library voices" in exc.value.upstream_detail
+
+
+@pytest.mark.asyncio
+async def test_transcribe_error_carries_status_code():
+    from app.providers.voice.elevenlabs import ElevenLabsProvider
+    from app.providers.voice.base import VoiceProviderError
+
+    resp = _error_response(401, {"detail": {"message": "invalid api key"}})
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=resp)
+
+    with patch("httpx.AsyncClient", return_value=client):
+        provider = ElevenLabsProvider(api_key="k")
+        with pytest.raises(VoiceProviderError) as exc:
+            await provider.transcribe(b"audio", "audio/webm")
+
+    assert exc.value.status_code == 401
+    assert "invalid api key" in exc.value.upstream_detail
+
+
+@pytest.mark.asyncio
+async def test_upstream_detail_handles_non_json_body():
+    """Some provider errors come back as HTML or plain text."""
+    from app.providers.voice.elevenlabs import ElevenLabsProvider
+    from app.providers.voice.base import VoiceProviderError
+
+    resp = _error_response(503, "<html>Service Unavailable</html>", is_json=False)
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=resp)
+
+    with patch("httpx.AsyncClient", return_value=client):
+        provider = ElevenLabsProvider(api_key="k")
+        with pytest.raises(VoiceProviderError) as exc:
+            await provider.synthesize("hello", "voice-1")
+
+    assert exc.value.status_code == 503
+    assert "Service Unavailable" in exc.value.upstream_detail
+
+
+@pytest.mark.asyncio
+async def test_timeout_has_no_status_code():
+    """Transport failures never carry an upstream status."""
+    import httpx
+    from app.providers.voice.elevenlabs import ElevenLabsProvider
+    from app.providers.voice.base import VoiceProviderError
+
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+
+    with patch("httpx.AsyncClient", return_value=client):
+        provider = ElevenLabsProvider(api_key="k")
+        with pytest.raises(VoiceProviderError) as exc:
+            await provider.synthesize("hello", "voice-1")
+
+    assert exc.value.status_code is None
